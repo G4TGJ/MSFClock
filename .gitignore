@@ -1,0 +1,14 @@
+#Build Results
+*.o
+*.d
+*.eep
+*.elf
+*.hex
+*.map
+*.srec
+*.lss
+
+#User Specific Files
+*.atsuo
+
+#Allow certain files
