@@ -103,6 +103,7 @@ typedef uint8_t bool;
 
 #endif
 
+// The size of the LCD screen
 #define LCD_WIDTH 16
 #define LCD_HEIGHT 2
 

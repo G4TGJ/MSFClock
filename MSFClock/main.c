@@ -20,6 +20,97 @@
 #include "serial.h"
 #endif
 
+// Positions in the MSF data for the date and time data
+// plus the areas covered by parity checks
+#define YEAR_START          17
+#define YEAR_LEN             8
+#define YEAR_PARITY         54
+
+#define MONTH_PARITY_START  25
+#define MONTH_PARITY_END    35
+#define MONTH_PARITY        55
+
+#define MONTH_START         25
+#define MONTH_LEN            5
+
+#define DATE_START          30
+#define DATE_LEN             6
+
+#define DAY_START           36
+#define DAY_LEN              3
+#define DAY_PARITY          56
+
+#define HOUR_START          39
+#define HOUR_LEN             6
+
+#define MINUTE_START        45
+#define MINUTE_LEN           7
+
+#define TIME_PARITY_START   39
+#define TIME_PARITY_END     51
+#define TIME_PARITY         57
+
+enum
+{
+    SUNDAY = 0,
+    MONDAY,
+    TUESDAY,
+    WEDNESDAY,
+    THURSDAY,
+    FRIDAY,
+    SATURDAY,
+    NUM_DAYS
+};
+
+#define LAST_DAY SATURDAY
+
+static const char *dayText[NUM_DAYS] =
+{
+    "Sun",
+    "Mon",
+    "Tue",
+    "Wed",
+    "Thu",
+    "Fri",
+    "Sat"
+};
+
+enum
+{
+    JANUARY = 1,
+    FEBRUARY,
+    MARCH,
+    APRIL,
+    MAY,
+    JUNE,
+    JULY,
+    AUGUST,
+    SEPTEMBER,
+    OCTOBER,
+    NOVEMBER,
+    DECEMBER
+};
+
+#define NUM_MONTHS DECEMBER
+
+// Number of days in a month
+const uint8_t daysInMonth[NUM_MONTHS+1] =
+{
+    0,
+    31, // January
+    28, // February
+    31, // March
+    30, // April
+    31, // May
+    30, // June
+    31, // July
+    31, // August
+    30, // September
+    31, // October
+    30, // November
+    31  // December
+};
+
 // The number of bits of data potentially received from MSF
 // Have to allow for a leap second and the data being stored
 // starting at 1
@@ -33,7 +124,8 @@ static bool bitB[NUM_BITS];
 static char buf[50];
 
 // The current time and date
-static uint8_t currentYear, currentMonth, currentDate, currentDay;
+// Initialise to something to display while acquiring the time from MSF
+static uint8_t currentYear = 21, currentMonth = 1, currentDate = 1, currentDay = FRIDAY;
 static uint8_t currentHour, currentMinute, currentSecond;
 static bool bDaylightSavings;
 
@@ -45,8 +137,13 @@ static uint8_t currentBit;
 // autonomously increment the time
 static uint32_t lastSecond;
 
-// The offset between an MSF second and the AVR's internal second
-static int32_t currentOffset;
+// The millisecond count for the last second pulse receive from MSF
+// Used to display if second pulses are being received
+static uint32_t lastSecondPulse;
+
+// The millisecond count for the last time we got a minute pulse
+// Used to display if we are getting minute pulses
+static uint32_t lastMinute;
 
 // Have we ever acquired a signal? Can't display the time until we have
 static bool bAcquired;
@@ -114,34 +211,6 @@ static uint8_t convertBCD( uint8_t start, uint8_t len )
     return val;
 }
 
-#define YEAR_START  17
-#define YEAR_LEN    8
-#define YEAR_PARITY 54
-
-#define MONTH_PARITY_START  25
-#define MONTH_PARITY_END    35
-#define MONTH_PARITY        55
-
-#define MONTH_START  25
-#define MONTH_LEN    5
-
-#define DATE_START          30
-#define DATE_LEN             6
-
-#define DAY_START           36
-#define DAY_LEN              3
-#define DAY_PARITY          56
-
-#define HOUR_START          39
-#define HOUR_LEN             6
-
-#define MINUTE_START        45
-#define MINUTE_LEN           7
-
-#define TIME_PARITY_START   39
-#define TIME_PARITY_END     51
-#define TIME_PARITY         57
-
 // Checks that the minute identifier within the MSF data is correct
 static bool checkMinuteIdentifier()
 {
@@ -155,31 +224,6 @@ static bool checkMinuteIdentifier()
          && !bitA[59];
 }
 
-enum
-{
-    SUNDAY = 0,
-    MONDAY,
-    TUESDAY,
-    WEDNESDAY,
-    THURSDAY,
-    FRIDAY,
-    SATURDAY,
-    NUM_DAYS
-};
-
-#define LAST_DAY SATURDAY
-
-static const char *dayText[NUM_DAYS] =
-{
-    "Sun",
-    "Mon",
-    "Tue",
-    "Wed",
-    "Thu",
-    "Fri",
-    "Sat"
-};
-
 // Converts an MSF day number into text
 static const char *convertDay( uint8_t day )
 {
@@ -192,42 +236,6 @@ static const char *convertDay( uint8_t day )
         return "Unknown";
     }
 }
-
-enum
-{
-    JANUARY = 1,
-    FEBRUARY,
-    MARCH,
-    APRIL,
-    MAY,
-    JUNE,
-    JULY,
-    AUGUST,
-    SEPTEMBER,
-    OCTOBER,
-    NOVEMBER,
-    DECEMBER
-};
-
-#define NUM_MONTHS DECEMBER
-
-// Number of days in a month
-const uint8_t daysInMonth[NUM_MONTHS+1] =
-{
-    0,      
-    31, // January
-    28, // February
-    31, // March
-    30, // April
-    31, // May
-    30, // June
-    31, // July
-    31, // August
-    30, // September
-    31, // October
-    30, // November
-    31  // December
-};
 
 // Returns the number of days in a month allowing for leap years
 // The year is from 00-99 so will never be a century year in the lifetime
@@ -260,77 +268,69 @@ static uint8_t getDaysInMonth( uint8_t month, uint8_t year )
 // Displays the time
 static void displayTime(void)
 {
-    // Cannot display the time if we have never acquired it from MSF
-    if( bAcquired )
+    // We may need to adjust the time to take into account daylight savings
+    uint8_t displayDay = currentDay;
+    uint8_t displayDate = currentDate;
+    uint8_t displayMonth = currentMonth;
+    uint8_t displayYear = currentYear;
+    uint8_t displayHour = currentHour;
+    uint8_t displayMinute = currentMinute;
+    uint8_t displaySecond = currentSecond;
+
+    // If we are on daylight savings then we need to go back one hour to get UTC
+    // This may also mean going back to the previous day
+    if( bDaylightSavings )
     {
-        //displayText(1, "Got the time", true);
-        // We may need to adjust the time to take into account daylight savings
-        uint8_t displayDay = currentDay;
-        uint8_t displayDate = currentDate;
-        uint8_t displayMonth = currentMonth;
-        uint8_t displayYear = currentYear;
-        uint8_t displayHour = currentHour;
-        uint8_t displayMinute = currentMinute;
-        uint8_t displaySecond = currentSecond;
-
-        // If we are on daylight savings then we need to go back one hour to get UTC
-        // This may also mean going back to the previous day
-        if( bDaylightSavings )
+        // If in the first hour of the clock day then must go back to the
+        // previous day
+        if( displayHour == 0 )
         {
-            // If in the first hour of the clock day then must go back to the
-            // previous day
-            if( displayHour == 0 )
+            displayHour = 23;
+
+            // If the first of the month then go back to the previous month
+            if( displayDate == 1 )
             {
-                displayHour = 23;
+                displayMonth--;
 
-                // If the first of the month then go back to the previous month
-                if( displayDate == 1 )
-                {
-                    displayMonth--;
-
-                    // The date will be the last day of the previous month
-                    displayDate = getDaysInMonth(displayMonth, displayYear);
-                }
-                else
-                {
-                    displayDate--;
-                }
-
-                // Also need to go to the previous day of the week
-                if( displayDay == SUNDAY )
-                {
-                    displayDay = SATURDAY;
-                }
-                else
-                {
-                    displayDay--;
-                }
+                // The date will be the last day of the previous month
+                displayDate = getDaysInMonth(displayMonth, displayYear);
             }
             else
             {
-                displayHour--;
+                displayDate--;
+            }
+
+            // Also need to go to the previous day of the week
+            if( displayDay == SUNDAY )
+            {
+                displayDay = SATURDAY;
+            }
+            else
+            {
+                displayDay--;
             }
         }
+        else
+        {
+            displayHour--;
+        }
+    }
 
 #ifdef DEBUG
-        sprintf( buf, "%s %u/%u/%u %02u:%02u:%02u UTC %s %ld\r\n", convertDay(displayDay), displayDate, displayMonth, displayYear, displayHour, displayMinute, displaySecond, bGoodSignal ? "OK" : "Lost", currentOffset );
-        serialTXString( buf );
+    sprintf( buf, "%s %u/%u/%u %02u:%02u:%02u UTC %s\r\n", convertDay(displayDay), displayDate, displayMonth, displayYear, displayHour, displayMinute, displaySecond, bGoodSignal ? "OK" : "Lost" );
+    serialTXString( buf );
 #endif
 
-        static uint32_t secondCount;
-        secondCount++;
-        sprintf_P( buf, PSTR("%lu"), secondCount );
-//        sprintf_P( buf, PSTR("%s %02u/%02u/%02u"), convertDay(displayDay), displayDate, displayMonth, displayYear );
-        displayText(0, buf, true);
-        sprintf_P( buf, PSTR("%02u:%02u:%02uZ %c%c%c"), displayHour, displayMinute, displaySecond, bGoodSignal ? 'G' : 'b', bGoodMinute ?  'M' : 'm', bGoodSecond ? 'S' : 's');
-        displayText(1, buf, true);
-    }
-    else
-    {
-#ifdef DEBUG
-        serialTXString("Waiting to acquire signal\n\r");
+#if 0
+    static uint32_t secondCount;
+    secondCount++;
+    sprintf_P( buf, PSTR("%lu"), secondCount );
+#else
+    sprintf_P( buf, PSTR("%s %02u/%02u/%02u   %c"), convertDay(displayDay), displayDate, displayMonth, displayYear, bGoodSignal ? '*' : ' ' );
 #endif
-    }
+    displayText(0, buf, true);
+    sprintf_P( buf, PSTR("%02u:%02u:%02u UTC  %c%c"), displayHour, displayMinute, displaySecond, bGoodSignal ? ' ' : bGoodMinute ?  'M' : 'm', bGoodSignal ? ' ' : bGoodSecond ? 'S' : 's');
+    displayText(1, buf, true);
 }
 
 // Process the data received from MSF over the last minute
@@ -467,10 +467,6 @@ static void newSecond( uint32_t currentTime )
     serialTXString(buf);
 #endif
 
-    // Record the offset between the current time and the last second
-    // This tells us how accurate the AVR's clock is
-    currentOffset = currentTime - lastSecond;
-
 #ifdef DEBUG
     sprintf( buf, "\r\ncurrentTime %lu  lastSecond %lu ", currentTime, lastSecond );
     serialTXString(buf);
@@ -486,7 +482,7 @@ static void newSecond( uint32_t currentTime )
     lastSecond = currentTime;
 
     // Move to the next second. May have to increment minutes, hours, date, day
-    // Use >= instead of == just in case we end up with an odd date
+    // Use >= instead of == just in case we end up with an odd time or date
     if( currentSecond >= 59 )
     {
         currentSecond = 0;
@@ -553,7 +549,7 @@ static void processRX( bool signal, uint32_t currentTime )
     static bool bSignal;
     
     // Process the signal if it has changed
-    if( bSignal != signal )
+    if( signal != bSignal )
     {
         bSignal = signal;
         if( bSignal )
@@ -573,6 +569,10 @@ static void processRX( bool signal, uint32_t currentTime )
                 nextTimeout = currentTime + 50;
                 eState = NEW_SECOND;
                 bGoodSecond = true;
+
+                // Note the time we got the pulse
+                // Used to display if second pulses are being received
+                lastSecondPulse = currentTime;
 
                 // Move to the next bit of MSF data to receive but don't go
                 // too far
@@ -602,9 +602,15 @@ static void processRX( bool signal, uint32_t currentTime )
             lowTime = currentTime;
 
             // Going low after at least 400ms is a minute marker
-            if( currentTime - highTime > 400)
+            // Only accept this if we are getting good second pulses
+            // Otherwise regaining the signal after loss looks like a minute
+            // pulse.
+            if( bGoodSecond && (currentTime - highTime > 400) )
             {
                 bGoodMinute = true;
+
+                // Note the time we got the minute pulse
+                lastMinute = currentTime;
 
                 // The last second must have happened 500ms ago
                 // This ensures we will use the next second pulse
@@ -746,14 +752,28 @@ static void handleRX(uint32_t currentTime)
 void autonomousClock( uint32_t currentTime )
 {
     // If it has been a lot more than a second since we last
-    // received a second then we'll force one.
+    // received a second pulse then we'll force one.
     if( (currentTime - lastSecond) >= 1200 )
     {
         // The signal is missing
-        bGoodSignal = bGoodSecond = bGoodMinute = false;
+        bGoodSignal = false;
 
         // Use the time when the second should have started
         newSecond(currentTime - 200);
+    }
+
+    // If it has been a lot more than a second since we last
+    // received a second pulse then will display that fact
+    if( (currentTime - lastSecondPulse) >= 1200 )
+    {
+        bGoodSecond = false;
+    }
+
+    // If it has been more than a minute since we last
+    // received a minute pulse then we'll display that fact
+    if( (currentTime - lastMinute) >= 61000 )
+    {
+        bGoodMinute = false;
     }
 }
 
