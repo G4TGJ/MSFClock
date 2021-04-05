@@ -532,7 +532,8 @@ static void newSecond( uint32_t currentTime )
 // Process the data received from MSF
 static void processRX( bool signal, uint32_t currentTime )
 {
-    static uint32_t lowTime, highTime;
+    // Note the time at which the signal has gone high or low
+    static uint32_t highTime, lowTime;
 
     static uint32_t nextTimeout;
     static enum
@@ -554,58 +555,13 @@ static void processRX( bool signal, uint32_t currentTime )
         bSignal = signal;
         if( bSignal )
         {
-            // Keep track of how long the signal is high
             highTime = currentTime;
 
-            // Going high after at least 400ms low is a new second
-            if( currentTime - lowTime > 400 )
-            {
-                // Only trigger a new second if the signal is good to
-                // prevent spurious seconds if the signal is poor
-                if( bGoodSignal )
-                {
-                    newSecond(currentTime);
-                }
-                nextTimeout = currentTime + 50;
-                eState = NEW_SECOND;
-                bGoodSecond = true;
-
-                // Note the time we got the pulse
-                // Used to display if second pulses are being received
-                lastSecondPulse = currentTime;
-
-                // Move to the next bit of MSF data to receive but don't go
-                // too far
-                currentBit++;
-                if( currentBit >= NUM_BITS )
-                {
-                    currentBit = 0;
-                }
-            }
-
-            switch( eState )
-            {
-                case A0:
-                    eState = IDLE;
-                    break;
-
-                case B0:
-                    eState = B1;
-                    break;
-
-                default:
-                    break;
-            }
-        }
-        else
-        {
-            lowTime = currentTime;
-
-            // Going low after at least 400ms is a minute marker
+            // Going high after at least 400ms is a minute marker
             // Only accept this if we are getting good second pulses
             // Otherwise regaining the signal after loss looks like a minute
             // pulse.
-            if( bGoodSecond && (currentTime - highTime > 400) )
+            if( bGoodSecond && (currentTime - lowTime > 400) )
             {
                 bGoodMinute = true;
 
@@ -640,6 +596,51 @@ static void processRX( bool signal, uint32_t currentTime )
 
                 default:
                     break;
+            }
+        }
+        else
+        {
+            // Keep track of how long the signal is low
+            lowTime = currentTime;
+
+            // Going low after at least 400ms high is a new second
+            if( currentTime - highTime > 400 )
+            {
+                // Only trigger a new second if the signal is good to
+                // prevent spurious seconds if the signal is poor
+                if( bGoodSignal )
+                {
+                    newSecond(currentTime);
+                }
+                nextTimeout = currentTime + 50;
+                eState = NEW_SECOND;
+                bGoodSecond = true;
+
+                // Note the time we got the pulse
+                // Used to display if second pulses are being received
+                lastSecondPulse = currentTime;
+
+                // Move to the next bit of MSF data to receive but don't go
+                // too far
+                currentBit++;
+                if( currentBit >= NUM_BITS )
+                {
+                    currentBit = 0;
+                }
+            }
+
+            switch( eState )
+            {
+                case A0:
+                eState = IDLE;
+                break;
+
+                case B0:
+                eState = B1;
+                break;
+
+                default:
+                break;
             }
         }
     }
@@ -701,50 +702,52 @@ static void processRX( bool signal, uint32_t currentTime )
 // Handle data received from MSF. It may be noisy so need to clean it up.
 static void handleRX(uint32_t currentTime)
 {
-    // Read the current sample
-    bool state = ioReadRXInput();
+    // Read the current carrier state
+    bool carrier = ioReadRXInput();
 
     static bool glitchState;
     static uint32_t glitchTime;
     static uint32_t previousTime;
-    static bool currentState;
 
-    bool newState = currentState;
+    // The current state of the carrier
+    static bool currentCarrier;
+
+    bool newCarrier = currentCarrier;
 
     // First eliminate any glitches
     // If the state has changed then note the time
-    if( state != glitchState )
+    if( carrier != glitchState )
     {
         glitchTime = currentTime;
-        glitchState = state;
+        glitchState = carrier;
     }
     else if( (currentTime - glitchTime) > 1 )
     {
         // If the state has been stable for long enough then set the
         // new state
-        newState = glitchState;
+        newCarrier = glitchState;
     }
 
     // Now need to process the glitch free sample
     // If the state has changed then note the time
-    if( newState != currentState )
+    if( newCarrier != currentCarrier )
     {
         previousTime = currentTime;
-        currentState = newState;
+        currentCarrier = newCarrier;
     }
 
     // When the signal is present it can be very noisy so assume the signal is
     // there unless it has been low for long enough
     uint32_t elapsedTime = currentTime - previousTime;
-    if( !currentState && (elapsedTime > 20) )
-    {
-        processRX( true, currentTime );
-        ioWriteLEDOutputHigh();
-    }
-    else
+    if( !currentCarrier && (elapsedTime > 20) )
     {
         processRX( false, currentTime );
         ioWriteLEDOutputLow();
+    }
+    else
+    {
+        processRX( true, currentTime );
+        ioWriteLEDOutputHigh();
     }
 }
 
