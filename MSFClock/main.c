@@ -9,12 +9,16 @@
 
 #include <avr/io.h>
 #include <stdio.h>
+#include <avr/pgmspace.h>
 
 #include "config.h"
 #include "millis.h"
 #include "io.h"
-#include "serial.h"
 #include "display.h"
+
+#ifdef DEBUG
+#include "serial.h"
+#endif
 
 // The number of bits of data potentially received from MSF
 // Have to allow for a leap second and the data being stored
@@ -26,7 +30,7 @@ static bool bitA[NUM_BITS];
 static bool bitB[NUM_BITS];
 
 // Buffer used for debug and display
-static char buf[100];
+static char buf[50];
 
 // The current time and date
 static uint8_t currentYear, currentMonth, currentDate, currentDay;
@@ -50,6 +54,7 @@ static bool bAcquired;
 // Do we have a good signal, are we receiving second and minute pulses?
 static bool bGoodSignal, bGoodSecond, bGoodMinute;
 
+#ifdef LED_OUTPUT_DDR_REG
 void flashLED(void)
 {
     static bool ledOn;
@@ -64,16 +69,17 @@ void flashLED(void)
         {
             ledOn = false;
             ioWriteLEDOutputLow();
-            displayText(1,"On ", false);
+            displayText(0,"On ", false);
         }
         else
         {
             ledOn = true;
             ioWriteLEDOutputHigh();
-            displayText(1,"Off ", false);
+            displayText(0,"Off ", false);
         }
     }
 }
+#endif
 
 // Checks the parity of a set of MSF bits
 static bool checkParity( uint8_t start, uint8_t finish, uint8_t parity )
@@ -243,7 +249,7 @@ static uint8_t getDaysInMonth( uint8_t month, uint8_t year )
             days = 29;
         }
     }
-    else if( month < NUM_MONTHS )
+    else if( month <= NUM_MONTHS )
     {
         days = daysInMonth[month];
     }
@@ -257,6 +263,7 @@ static void displayTime(void)
     // Cannot display the time if we have never acquired it from MSF
     if( bAcquired )
     {
+        //displayText(1, "Got the time", true);
         // We may need to adjust the time to take into account daylight savings
         uint8_t displayDay = currentDay;
         uint8_t displayDate = currentDate;
@@ -305,17 +312,24 @@ static void displayTime(void)
             }
         }
 
+#ifdef DEBUG
         sprintf( buf, "%s %u/%u/%u %02u:%02u:%02u UTC %s %ld\r\n", convertDay(displayDay), displayDate, displayMonth, displayYear, displayHour, displayMinute, displaySecond, bGoodSignal ? "OK" : "Lost", currentOffset );
         serialTXString( buf );
+#endif
 
-        sprintf( buf, "%s %02u/%02u/%02u", convertDay(displayDay), displayDate, displayMonth, displayYear );
+        static uint32_t secondCount;
+        secondCount++;
+        sprintf_P( buf, PSTR("%lu"), secondCount );
+//        sprintf_P( buf, PSTR("%s %02u/%02u/%02u"), convertDay(displayDay), displayDate, displayMonth, displayYear );
         displayText(0, buf, true);
-        sprintf( buf, "%02u:%02u:%02uZ %c%c%c", displayHour, displayMinute, displaySecond, bGoodSignal ? 'G' : 'b', bGoodMinute ?  'M' : 'm', bGoodSecond ? 'S' : 's');
+        sprintf_P( buf, PSTR("%02u:%02u:%02uZ %c%c%c"), displayHour, displayMinute, displaySecond, bGoodSignal ? 'G' : 'b', bGoodMinute ?  'M' : 'm', bGoodSecond ? 'S' : 's');
         displayText(1, buf, true);
     }
     else
     {
+#ifdef DEBUG
         serialTXString("Waiting to acquire signal\n\r");
+#endif
     }
 }
 
@@ -448,14 +462,24 @@ static void processRXData(void)
 // have missed one (so that the clock keeps going without a signal)
 static void newSecond( uint32_t currentTime )
 {
+#ifdef DEBUG
     sprintf( buf, "\r\nSecond %u MSF bit %u ", currentSecond, currentBit );
     serialTXString(buf);
+#endif
 
     // Record the offset between the current time and the last second
     // This tells us how accurate the AVR's clock is
     currentOffset = currentTime - lastSecond;
+
+#ifdef DEBUG
     sprintf( buf, "\r\ncurrentTime %lu  lastSecond %lu ", currentTime, lastSecond );
     serialTXString(buf);
+#endif
+
+#if 0
+    sprintf_P( buf, PSTR("c=%lu l=%lu "), currentTime, lastSecond );
+    displayText(0,buf,true);
+#endif
 
     // Keep track of the AVR clock time for this second
     // If we lose the MSF signal we can still make our own second tick
@@ -531,9 +555,6 @@ static void processRX( bool signal, uint32_t currentTime )
     // Process the signal if it has changed
     if( bSignal != signal )
     {
-//        sprintf(buf, "%s(%lu) ", signal ? "H" : "L", currentTime);
-//        serialTXString(buf);
-
         bSignal = signal;
         if( bSignal )
         {
@@ -583,9 +604,6 @@ static void processRX( bool signal, uint32_t currentTime )
             // Going low after at least 400ms is a minute marker
             if( currentTime - highTime > 400)
             {
-//                sprintf( buf, "\r\n\r\nMinute %d\r\n", minutes );
-//                serialTXString(buf);
-
                 bGoodMinute = true;
 
                 // The last second must have happened 500ms ago
@@ -623,11 +641,6 @@ static void processRX( bool signal, uint32_t currentTime )
     // Process a timeout
     else if( currentTime > nextTimeout )
     {
-        if( eState != IDLE )
-        {
-//            sprintf(buf, "T(%lu) ", currentTime);
-//            serialTXString(buf);
-        }
         switch( eState )
         {
             case NEW_SECOND:
@@ -639,30 +652,38 @@ static void processRX( bool signal, uint32_t currentTime )
                 eState = B1;
                 nextTimeout = currentTime + 100;
                 bitA[currentBit] = 1;
+#ifdef DEBUG
                 sprintf(buf, "A(%u)=1 ", currentBit);
                 serialTXString(buf);
+#endif
                 break;
 
             case A0:
                 eState = B0;
                 nextTimeout = currentTime + 100;
                 bitA[currentBit] = 0;
+#ifdef DEBUG
                 sprintf(buf, "A(%u)=0 ", currentBit);
                 serialTXString(buf);
+#endif
                 break;
 
             case B1:
                 eState = IDLE;
                 bitB[currentBit] = 1;
+#ifdef DEBUG
                 sprintf(buf, "B(%u)=1 ", currentBit);
                 serialTXString(buf);
+#endif
                 break;
 
             case B0:
                 eState = IDLE;
                 bitB[currentBit] = 0;
+#ifdef DEBUG
                 sprintf(buf, "B(%u)=0 ", currentBit);
                 serialTXString(buf);
+#endif
                 break;
 
             default:
@@ -738,25 +759,37 @@ void autonomousClock( uint32_t currentTime )
 
 static void loop(void)
 {
-//    flashLED();
+#if 1
     uint32_t currentTime = millis();
     handleRX(currentTime);
     autonomousClock(currentTime);
     //ioToggleLEDOutput();
+#else
+    flashLED();
+#endif
 }
 
 int main(void)
 {
     millisInit();
     ioInit();
+
+#ifdef DEBUG
     serialInit(57600);
+#endif
+
     displayInit();
 
     ioWriteLEDOutputLow();
 
+#ifdef DEBUG
     serialTXString("G4TGJ MSF Clock\r\n\r\n");
+#endif
 
-    displayText(0, "G4TGJ MSF Clock", true);
+    OSCCAL = 0x87;
+    sprintf(buf, "0x%02x", OSCCAL);
+    displayText(0, buf, true);
+//    displayText(0, "G4TGJ MSF Clock", true);
     displayText(1, "Acquiring signal", true);
 
     while (1) 

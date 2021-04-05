@@ -9,20 +9,26 @@
 
 void ioInit()
 {
+#ifdef LED_OUTPUT_DDR_REG
     // Initialise LED output
     LED_OUTPUT_DDR_REG |= (1<<LED_OUTPUT_PIN);
-
+#endif
     // Initialise RX input
     RX_INPUT_PORT_REG |= (1<<RX_INPUT_PIN);
 
     // Setup timer 0 to produce RX clock
+#ifdef DDRD
     DDRD |= (1<<PD6);
+#else
+    DDRB |= (1<<PB2);
+#endif
     TCCR0A = ((1<<WGM01) | (0<<WGM00));
     TCCR0B = ((1<<CS00));
-    OCR0A = (F_CPU / CLOCK_FREQUENCY / 2);
+    OCR0A = (F_CPU / CLOCK_FREQUENCY / 2) - 1;
     TCCR0A |= (1<<COM0A0);
 }
 
+#ifdef LED_OUTPUT_DDR_REG
 // Set the LED output high
 void ioWriteLEDOutputHigh()
 {
@@ -35,14 +41,27 @@ void ioWriteLEDOutputLow()
     LED_OUTPUT_PORT_REG &= ~(1<<LED_OUTPUT_PIN);
 }
 
+void ioToggleLEDOutput()
+{
+    LED_OUTPUT_PIN_REG = (1<<LED_OUTPUT_PIN);
+}
+#else
+void ioWriteLEDOutputHigh()
+{
+}
+
+// Set the LED output low
+void ioWriteLEDOutputLow()
+{
+}
+
+void ioToggleLEDOutput()
+{
+}
+#endif
+
 // Read the RX input signal
 bool ioReadRXInput()
 {
     return !(RX_INPUT_PIN_REG & (1<<RX_INPUT_PIN));
 }
-
-void ioToggleLEDOutput()
-{
-    LED_OUTPUT_PIN_REG = (1<<LED_OUTPUT_PIN);
-}
-
