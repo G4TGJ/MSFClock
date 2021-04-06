@@ -24,7 +24,7 @@ void ioInit()
 #endif
     TCCR0A = ((1<<WGM01) | (0<<WGM00));
     TCCR0B = ((1<<CS00));
-    OCR0A = (F_CPU / CLOCK_FREQUENCY / 2) - 1;
+    OCR0A = (F_CPU / CLOCK_FREQUENCY / 2);
     TCCR0A |= (1<<COM0A0);
 }
 
@@ -61,6 +61,7 @@ void ioToggleLEDOutput()
 #endif
 
 // Read the RX input signal
+// true means the carrier is present
 bool ioReadRXInput()
 {
     return !(RX_INPUT_PIN_REG & (1<<RX_INPUT_PIN));
