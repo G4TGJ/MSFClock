@@ -326,7 +326,9 @@ static void displayTime(void)
     secondCount++;
     sprintf_P( buf, PSTR("%lu"), secondCount );
 #else
-    sprintf_P( buf, PSTR("%s %02u/%02u/%02u   %c"), convertDay(displayDay), displayDate, displayMonth, displayYear, bGoodSignal ? '*' : ' ' );
+    //sprintf_P( buf, PSTR("%s %02u/%02u/%02u   %c"), convertDay(displayDay), displayDate, displayMonth, displayYear, bGoodSignal ? '*' : ' ' );
+    uint32_t m = getMagnitude();
+    sprintf( buf, "%lu %lu", m, getAverage() );
 #endif
     displayText(0, buf, true);
     sprintf_P( buf, PSTR("%02u:%02u:%02u UTC  %c%c"), displayHour, displayMinute, displaySecond, bGoodSignal ? ' ' : bGoodMinute ?  'M' : 'm', bGoodSignal ? ' ' : bGoodSecond ? 'S' : 's');
@@ -703,51 +705,37 @@ static void processRX( bool signal, uint32_t currentTime )
 static void handleRX(uint32_t currentTime)
 {
     // Read the current carrier state
-    bool carrier = ioReadRXInput();
+    bool carrier = getSignal();
+//    bool carrier = ioReadRXInput();
 
-    static bool glitchState;
-    static uint32_t glitchTime;
     static uint32_t previousTime;
 
     // The current state of the carrier
     static bool currentCarrier;
 
-    bool newCarrier = currentCarrier;
-
-    // First eliminate any glitches
-    // If the state has changed then note the time
-    if( carrier != glitchState )
-    {
-        glitchTime = currentTime;
-        glitchState = carrier;
-    }
-    else if( (currentTime - glitchTime) > 1 )
-    {
-        // If the state has been stable for long enough then set the
-        // new state
-        newCarrier = glitchState;
-    }
-
     // Now need to process the glitch free sample
     // If the state has changed then note the time
-    if( newCarrier != currentCarrier )
+    if( carrier != currentCarrier )
     {
         previousTime = currentTime;
-        currentCarrier = newCarrier;
+        currentCarrier = carrier;
     }
 
     // When the signal is present it can be very noisy so assume the signal is
     // there unless it has been low for long enough
     uint32_t elapsedTime = currentTime - previousTime;
-    if( !currentCarrier && (elapsedTime > 20) )
+    if( elapsedTime > 20 )
     {
-        processRX( false, currentTime );
-        ioWriteLEDOutputLow();
-    }
-    else
-    {
-        processRX( true, currentTime );
-        ioWriteLEDOutputHigh();
+        if( currentCarrier )
+        {
+            processRX( true, currentTime );
+            ioWriteLEDOutputHigh();
+        }
+        else
+        {
+            processRX( false, currentTime );
+            ioWriteLEDOutputLow();
+        }
     }
 }
 

@@ -27,6 +27,11 @@ typedef uint8_t bool;
 #define LED_OUTPUT_DDR_REG    DDRB
 #define LED_OUTPUT_PIN        PORTB5
 
+#define DEBUG_OUTPUT_PORT_REG   PORTB
+#define DEBUG_OUTPUT_PIN_REG    PINB
+#define DEBUG_OUTPUT_DDR_REG    DDRB
+#define DEBUG_OUTPUT_PIN        PORTB4
+
 #define RX_INPUT_PORT_REG   PORTD
 #define RX_INPUT_PIN_REG    PIND
 #define RX_INPUT_DDR_REG    DDRD

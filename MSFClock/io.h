@@ -22,4 +22,8 @@ void ioToggleLEDOutput();
 // Read the RX input signal
 bool ioReadRXInput();
 
+uint32_t getMagnitude(void);
+bool getSignal(void);
+uint32_t getAverage(void);
+
 #endif /* IO_H_ */
