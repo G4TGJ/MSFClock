@@ -9,7 +9,6 @@
 
 #include <avr/io.h>
 #include <stdio.h>
-#include <avr/pgmspace.h>
 
 #include "config.h"
 #include "millis.h"
@@ -125,7 +124,7 @@ static char buf[50];
 
 // The current time and date
 // Initialise to something to display while acquiring the time from MSF
-static uint8_t currentYear = 21, currentMonth = 1, currentDate = 1, currentDay = FRIDAY;
+static uint8_t currentYear = 1, currentMonth = 1, currentDate = 1, currentDay = MONDAY;
 static uint8_t currentHour, currentMinute, currentSecond;
 static bool bDaylightSavings;
 
@@ -145,38 +144,8 @@ static uint32_t lastSecondPulse;
 // Used to display if we are getting minute pulses
 static uint32_t lastMinute;
 
-// Have we ever acquired a signal? Can't display the time until we have
-static bool bAcquired;
-
 // Do we have a good signal, are we receiving second and minute pulses?
 static bool bGoodSignal, bGoodSecond, bGoodMinute;
-
-#ifdef LED_OUTPUT_DDR_REG
-void flashLED(void)
-{
-    static bool ledOn;
-    static uint32_t previous;
-    uint32_t current = millis();
-
-    if( (current - previous) >= 1000 )
-    {
-        previous = current;
-
-        if( ledOn )
-        {
-            ledOn = false;
-            ioWriteLEDOutputLow();
-            displayText(0,"On ", false);
-        }
-        else
-        {
-            ledOn = true;
-            ioWriteLEDOutputHigh();
-            displayText(0,"Off ", false);
-        }
-    }
-}
-#endif
 
 // Checks the parity of a set of MSF bits
 static bool checkParity( uint8_t start, uint8_t finish, uint8_t parity )
@@ -324,14 +293,12 @@ static void displayTime(void)
 #if 0
     static uint32_t secondCount;
     secondCount++;
-    sprintf_P( buf, PSTR("%lu"), secondCount );
+    sprintf( buf, "%lu", secondCount );
 #else
-    //sprintf_P( buf, PSTR("%s %02u/%02u/%02u   %c"), convertDay(displayDay), displayDate, displayMonth, displayYear, bGoodSignal ? '*' : ' ' );
-    uint32_t m = getMagnitude();
-    sprintf( buf, "%lu %lu", m, getAverage() );
+    sprintf( buf, "%s %02u/%02u/%02u   %c", convertDay(displayDay), displayDate, displayMonth, displayYear, bGoodSignal ? '*' : ' ' );
 #endif
     displayText(0, buf, true);
-    sprintf_P( buf, PSTR("%02u:%02u:%02u UTC  %c%c"), displayHour, displayMinute, displaySecond, bGoodSignal ? ' ' : bGoodMinute ?  'M' : 'm', bGoodSignal ? ' ' : bGoodSecond ? 'S' : 's');
+    sprintf( buf, "%02u:%02u:%02u UTC  %c%c", displayHour, displayMinute, displaySecond, bGoodSignal ? ' ' : bGoodMinute ?  'M' : 'm', bGoodSignal ? ' ' : bGoodSecond ? 'S' : 's');
     displayText(1, buf, true);
 }
 
@@ -442,11 +409,6 @@ static void processRXData(void)
         {
             bGoodSignal = false;
         }
-
-        if( bGoodSignal )
-        {
-            bAcquired = true;
-        }
     }
     else
     {
@@ -472,11 +434,6 @@ static void newSecond( uint32_t currentTime )
 #ifdef DEBUG
     sprintf( buf, "\r\ncurrentTime %lu  lastSecond %lu ", currentTime, lastSecond );
     serialTXString(buf);
-#endif
-
-#if 0
-    sprintf_P( buf, PSTR("c=%lu l=%lu "), currentTime, lastSecond );
-    displayText(0,buf,true);
 #endif
 
     // Keep track of the AVR clock time for this second
@@ -701,19 +658,17 @@ static void processRX( bool signal, uint32_t currentTime )
     }
 }
 
-// Handle data received from MSF. It may be noisy so need to clean it up.
+// Handle data received from MSF.
 static void handleRX(uint32_t currentTime)
 {
     // Read the current carrier state
-    bool carrier = getSignal();
-//    bool carrier = ioReadRXInput();
+    bool carrier = ioReadRXInput();
 
     static uint32_t previousTime;
 
     // The current state of the carrier
     static bool currentCarrier;
 
-    // Now need to process the glitch free sample
     // If the state has changed then note the time
     if( carrier != currentCarrier )
     {
@@ -721,20 +676,16 @@ static void handleRX(uint32_t currentTime)
         currentCarrier = carrier;
     }
 
-    // When the signal is present it can be very noisy so assume the signal is
-    // there unless it has been low for long enough
-    uint32_t elapsedTime = currentTime - previousTime;
-    if( elapsedTime > 20 )
+    // Only process the carrier state if it has been stable for long enough
+    if( currentTime - previousTime > 20 )
     {
         if( currentCarrier )
         {
             processRX( true, currentTime );
-            ioWriteLEDOutputHigh();
         }
         else
         {
             processRX( false, currentTime );
-            ioWriteLEDOutputLow();
         }
     }
 }
@@ -770,14 +721,9 @@ void autonomousClock( uint32_t currentTime )
 
 static void loop(void)
 {
-#if 1
     uint32_t currentTime = millis();
     handleRX(currentTime);
     autonomousClock(currentTime);
-    //ioToggleLEDOutput();
-#else
-    flashLED();
-#endif
 }
 
 int main(void)
@@ -791,17 +737,9 @@ int main(void)
 
     displayInit();
 
-    ioWriteLEDOutputLow();
-
 #ifdef DEBUG
     serialTXString("G4TGJ MSF Clock\r\n\r\n");
 #endif
-
-    OSCCAL = 0x87;
-    sprintf(buf, "0x%02x", OSCCAL);
-    displayText(0, buf, true);
-//    displayText(0, "G4TGJ MSF Clock", true);
-    displayText(1, "Acquiring signal", true);
 
     while (1) 
     {

@@ -1,92 +1,108 @@
 /*
  * io.c
  *
+ * Implements the Goertzel algorithm on the ADC input
+ * to detect the MSF clock signal after the NE602 mixer.
+ *
+ * By sampling at 4 times the frequency the algorithm
+ * is very simple.
+ *
  * Created: 28/03/2021 13:15:39
  *  Author: Richard Tomlinson G4TGJ
  */ 
 
  #include <avr/interrupt.h>
- #include <util/atomic.h>
 
  #include "config.h"
 
- static volatile uint32_t magsq;
- static volatile uint32_t maxmag;
- static volatile uint32_t average;
- static volatile bool bSignal;
+// The number of samples for calculating the signal magnitude
+#define NUM_SAMPLES 28
 
- #define NUM_SAMPLES           28
- #define NUM_AVERAGE_SAMPLES 1024
+// The number of samples over which we will average the signal
+// to decide the threshold for deciding the carrier is present
+// Needs to be a lot more that the number of goertzel samples
+#define NUM_AVERAGE_SAMPLES 1024
 
- #define THRESHOLD (NUM_SAMPLES*average)
+// To get the correct sample rate we only process every so
+// many samples
+#define SAMPLE_COUNT 13
 
+// The square of the magnitude of the clock signal as
+// calculated by the goertzel algorithm
+static volatile uint32_t magsq;
+
+// The average signal - used to scale the threshold
+// for the clock signal
+static volatile uint32_t average;
+
+// True when the signal is present
+static volatile bool bSignal;
+
+// The threshold for deciding the clock signal is present
+// Also keep the previous threshold so we can apply hysteresis
 static uint32_t threshold, prevThreshold;
 
+// A to D interrupt complete vector
  ISR (ADC_vect)
 {
+    // To get the correct sample rate only process every n samples
     static uint8_t count;
     count++;
-    if( count >= 13)
+    if( count >= SAMPLE_COUNT )
     {
-        DEBUG_OUTPUT_PIN_REG = (1<<DEBUG_OUTPUT_PIN);
         count = 0;
 
+#ifdef DEBUG_OUTPUT_PIN_REG
+DEBUG_OUTPUT_PIN_REG = (1<<DEBUG_OUTPUT_PIN);
+#endif
+
+        // The values for the goertzel algorithm
         static int32_t q0, q1, q2;
+
+        // The number of samples we have processed for goertzel
         static uint8_t gCount;
+
+        // Scale the sample from 8 bit unsigned to a signed number
         int32_t sample = ((int16_t) ADCH) - 128;
+
+        // Process the Goertzel algorithm
         q0 = sample - q2;
         q2 = q1;
         q1 = q0;
 
+        // Keep a moving average of the signal magnitude squared
+        // We use this to determine the threshold
         average = (average * (NUM_AVERAGE_SAMPLES-1)  + sample*sample) / NUM_AVERAGE_SAMPLES;
 
+        // Check if we have processed enough samples to calculate the magnitude
         gCount++;
         if( gCount == NUM_SAMPLES )
         {
+            // Calculate the magnitude squared
             magsq =  q1*q1 +  q2*q2;
 
+            // Is the signal strong enough?
             if( magsq > threshold )
             {
+                // Once the signal is detected it only needs to remain above a low threshold
                 prevThreshold = threshold = NUM_SAMPLES * average;
                 LED_OUTPUT_PORT_REG |= (1<<LED_OUTPUT_PIN);
                 bSignal = true;
             }
             else
             {
+                // To help eliminate false signals set the threshold
+                // to be much higher than previously
                 threshold = prevThreshold * 8;
                 LED_OUTPUT_PORT_REG &= ~(1<<LED_OUTPUT_PIN);
                 bSignal = false;
             }
 
+            // Restart the Goertzel algorithm
             gCount = 0;
             q1 = q2 = 0;
         }
     }
-}
-
-bool getSignal(void)
-{
-    return bSignal;
-}
-
-uint32_t getMagnitude(void)
-{
-    uint32_t mag;
-    ATOMIC_BLOCK(ATOMIC_FORCEON)
-    {
-        mag = magsq;
-    }
-    return mag;
-}
-
-uint32_t getAverage(void)
-{
-    uint32_t ave;
-    ATOMIC_BLOCK(ATOMIC_FORCEON)
-    {
-        ave = threshold;
-    }
-    return ave;
 }
 
 void ioInit()
@@ -96,13 +112,12 @@ void ioInit()
     LED_OUTPUT_DDR_REG |= (1<<LED_OUTPUT_PIN);
 #endif
 #ifdef DEBUG_OUTPUT_DDR_REG
-// Initialise debug output
-DEBUG_OUTPUT_DDR_REG |= (1<<DEBUG_OUTPUT_PIN);
+    // Initialise debug output
+    DEBUG_OUTPUT_DDR_REG |= (1<<DEBUG_OUTPUT_PIN);
 #endif
-    // Initialise RX input
-    RX_INPUT_PORT_REG |= (1<<RX_INPUT_PIN);
 
     // Setup timer 0 to produce RX clock
+    // This is the LO for the NE602
 #ifdef DDRD
     DDRD |= (1<<PD6);
 #else
@@ -123,41 +138,9 @@ DEBUG_OUTPUT_DDR_REG |= (1<<DEBUG_OUTPUT_PIN);
     PORTD = (1<<PORTD0) | (1<<PORTD1) | (1<<PORTD2) | (1<<PORTD3) | (1<<PORTD7);
 }
 
-#if 0 //def LED_OUTPUT_DDR_REG
-// Set the LED output high
-void ioWriteLEDOutputHigh()
-{
-    LED_OUTPUT_PORT_REG |= (1<<LED_OUTPUT_PIN);
-}
-
-// Set the LED output low
-void ioWriteLEDOutputLow()
-{
-    LED_OUTPUT_PORT_REG &= ~(1<<LED_OUTPUT_PIN);
-}
-
-void ioToggleLEDOutput()
-{
-    LED_OUTPUT_PIN_REG = (1<<LED_OUTPUT_PIN);
-}
-#else
-void ioWriteLEDOutputHigh()
-{
-}
-
-// Set the LED output low
-void ioWriteLEDOutputLow()
-{
-}
-
-void ioToggleLEDOutput()
-{
-}
-#endif
-
 // Read the RX input signal
 // true means the carrier is present
 bool ioReadRXInput()
 {
-    return !(RX_INPUT_PIN_REG & (1<<RX_INPUT_PIN));
+    return bSignal;
 }
