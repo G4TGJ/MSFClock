@@ -25,7 +25,7 @@
 
 // To get the correct sample rate we only process every so
 // many samples
-#define SAMPLE_COUNT 13
+#define SAMPLE_COUNT 14
 
 // The square of the magnitude of the clock signal as
 // calculated by the goertzel algorithm
@@ -129,8 +129,14 @@ void ioInit()
     TCCR0A |= (1<<COM0A0);
 
     // Set up the ADC
+    // Use AVCC as voltage reference and left adjust result (for 8 bit samples)
     ADMUX = (1<<REFS0) | (1<<ADLAR);
+
+    // Disable the digital circuitry on the pin
     DIDR0 = (1<<ADC0D);
+
+    // Enable the ADC, start conversion, enable auto triggering, enable completion interrupt,
+    // prescale by 32
     ADCSRA = (1<<ADEN) | (1<<ADSC) | (1<<ADATE) | (1<<ADIE) | (1<<ADPS2) | (0<<ADPS1) | (1<<ADPS0);
 
     // Turn on the pull-ups on unused pins
