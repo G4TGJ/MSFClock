@@ -157,6 +157,9 @@ static uint32_t lastMinute;
 // Do we have a good signal, are we receiving second and minute pulses?
 static bool bGoodSignal, bGoodSecond, bGoodMinute;
 
+// The current DUT1
+static int8_t dut1;
+
 static void convertTimeUTC(void);
 
 // Initialise the RTC chip
@@ -359,7 +362,7 @@ static void displayTime(void)
     sprintf( buf, "%s %02u/%02u/%02u   %c", convertDay(utcDay), utcDate, utcMonth, utcYear, bGoodSignal ? '*' : ' ' );
 #endif
     displayText(0, buf, true);
-    sprintf( buf, "%02u:%02u:%02u UTC  %c%c", utcHour, currentMinute, currentSecond, bGoodSignal ? ' ' : bGoodMinute ?  'M' : 'm', bGoodSignal ? ' ' : bGoodSecond ? 'S' : 's');
+    sprintf( buf, "%02u:%02u:%02u UTC  %c%c", utcHour, currentMinute, currentSecond, bGoodSignal ? (dut1 >= 0 ? '+' : '-') : bGoodMinute ?  'M' : 'm', bGoodSignal ? (dut1 >= 0 ? dut1 + '0' : '0' - dut1) : bGoodSecond ? 'S' : 's');
     displayText(1, buf, true);
 }
 
@@ -473,6 +476,210 @@ static void processRXData(void)
             if( bGoodSignal )
             {
                 writeRTCTime();
+            }
+
+            // Process the DUT1 code
+            dut1 = 0;
+
+            // Start by counting the positive bits. Then check that if bit n is set there are n bits set.
+            uint8_t posDutCount = bitB[1] + bitB[2] + bitB[3] + bitB[4] + bitB[5] + bitB[6] + bitB[7] + bitB[8];
+            int8_t posDut1 = 0;
+            if( bitB[8] )
+            {
+                if( posDutCount == 8 )
+                {
+                    posDut1 = 8;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[7] )
+            {
+                if( posDutCount == 7 )
+                {
+                    posDut1 = 7;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[6] )
+            {
+                if( posDutCount == 6 )
+                {
+                    posDut1 = 6;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[5] )
+            {
+                if( posDutCount == 5 )
+                {
+                    posDut1 = 5;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[4] )
+            {
+                if( posDutCount == 4 )
+                {
+                    posDut1 = 4;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[3] )
+            {
+                if( posDutCount == 3 )
+                {
+                    posDut1 = 3;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[2] )
+            {
+                if( posDutCount == 2 )
+                {
+                    posDut1 = 2;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[1] )
+            {
+                if( posDutCount == 1 )
+                {
+                    posDut1 = 1;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+
+            // Now count the negative bits. Then check that if bit n is set there are n bits set.
+            uint8_t negDutCount = bitB[9] + bitB[10] + bitB[11] + bitB[12] + bitB[13] + bitB[14] + bitB[15] + bitB[16];
+            int8_t negDut1 = 0;
+            if( bitB[16] )
+            {
+                if( negDutCount == 8 )
+                {
+                    negDut1 = -8;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[15] )
+            {
+                if( negDutCount == 7 )
+                {
+                    negDut1 = -7;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[14] )
+            {
+                if( negDutCount == 6 )
+                {
+                    negDut1 = -6;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[13] )
+            {
+                if( negDutCount == 5 )
+                {
+                    negDut1 = -5;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[12] )
+            {
+                if( negDutCount == 4 )
+                {
+                    negDut1 = -4;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[11] )
+            {
+                if( negDutCount == 3 )
+                {
+                    negDut1 = -3;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[10] )
+            {
+                if( negDutCount == 2 )
+                {
+                    negDut1 = -2;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+            else if( bitB[9] )
+            {
+                if( negDutCount == 1 )
+                {
+                    negDut1 = -1;
+                }
+                else
+                {
+                    bGoodSignal = false;
+                }
+            }
+
+            // Cannot have both positive and negative DUT1 signals
+            if( posDut1)
+            {
+                if( negDut1 )
+                {
+                    bGoodSignal = false;
+                }
+                else
+                {
+                    dut1 = posDut1;
+                }
+            }
+            else
+            {
+                dut1 = negDut1;
             }
         }
         else
