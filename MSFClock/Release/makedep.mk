@@ -4,6 +4,8 @@
 
 ..\..\TARL\display.c
 
+..\..\TARL\i2c.c
+
 ..\..\TARL\lcd.c
 
 ..\..\TARL\lcd_port.c

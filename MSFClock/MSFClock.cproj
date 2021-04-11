@@ -121,6 +121,14 @@
       <SubType>compile</SubType>
       <Link>display.h</Link>
     </Compile>
+    <Compile Include="..\..\TARL\i2c.c">
+      <SubType>compile</SubType>
+      <Link>i2c.c</Link>
+    </Compile>
+    <Compile Include="..\..\TARL\i2c.h">
+      <SubType>compile</SubType>
+      <Link>i2c.h</Link>
+    </Compile>
     <Compile Include="..\..\TARL\lcd.c">
       <SubType>compile</SubType>
       <Link>lcd.c</Link>

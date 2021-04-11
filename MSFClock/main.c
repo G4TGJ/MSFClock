@@ -14,6 +14,7 @@
 #include "millis.h"
 #include "io.h"
 #include "display.h"
+#include "i2c.h"
 
 #ifdef DEBUG
 #include "serial.h"
@@ -122,11 +123,20 @@ static bool bitB[NUM_BITS];
 // Buffer used for debug and display
 static char buf[50];
 
-// The current time and date
+// The current time and date as received from MSF - these are local time
+// so may be one hour ahead of UTC
 // Initialise to something to display while acquiring the time from MSF
 static uint8_t currentYear = 1, currentMonth = 1, currentDate = 1, currentDay = MONDAY;
 static uint8_t currentHour, currentMinute, currentSecond;
 static bool bDaylightSavings;
+
+// UTC versions of the time and date
+// Do not need UTC minute and second as these are always the same as local time
+static uint8_t utcDay;
+static uint8_t utcDate;
+static uint8_t utcMonth;
+static uint8_t utcYear;
+static uint8_t utcHour;
 
 // The current data bit position we are receiving from MSF
 static uint8_t currentBit;
@@ -146,6 +156,55 @@ static uint32_t lastMinute;
 
 // Do we have a good signal, are we receiving second and minute pulses?
 static bool bGoodSignal, bGoodSecond, bGoodMinute;
+
+static void convertTimeUTC(void);
+
+// Initialise the RTC chip
+static void initRTC(void)
+{
+    // Disable the 32kHz and 1Hz outputs
+    i2cWriteRegister(RTC_ADDRESS, RTC_REG_STATUS, 0);
+    i2cWriteRegister(RTC_ADDRESS, RTC_REG_CONTROL, 1<<RTC_CONTROL_INTCN);
+}
+
+// Read the time from the RTC chip
+static void readRTCTime(void)
+{
+    i2cReadRegister(RTC_ADDRESS, RTC_REG_SECONDS, &currentSecond);
+    currentSecond = BCD_TO_BIN( currentSecond );
+    i2cReadRegister(RTC_ADDRESS, RTC_REG_MINUTES, &currentMinute);
+    currentMinute = BCD_TO_BIN( currentMinute );
+    i2cReadRegister(RTC_ADDRESS, RTC_REG_HOURS, &currentHour);
+    currentHour = BCD_TO_BIN( currentHour );
+    i2cReadRegister(RTC_ADDRESS, RTC_REG_DAY, &currentDay);
+    currentDay--; // MSF has days as 0-6 but RTC is 1-7
+    i2cReadRegister(RTC_ADDRESS, RTC_REG_DATE, &currentDate);
+    currentDate = BCD_TO_BIN( currentDate );
+    i2cReadRegister(RTC_ADDRESS, RTC_REG_MONTH, &currentMonth);
+    currentMonth = BCD_TO_BIN( currentMonth );
+    i2cReadRegister(RTC_ADDRESS, RTC_REG_YEAR, &currentYear);
+    currentYear = BCD_TO_BIN( currentYear );
+
+    // Nowhere to store the daylight saving setting in the RTC so
+    // always store the time in UTC.
+    bDaylightSavings = false;
+
+    // Convert it to UTC
+    convertTimeUTC();
+}
+
+// Write the UTC time to the RTC chip
+// We do this every minute
+static void writeRTCTime(void)
+{
+    i2cWriteRegister(RTC_ADDRESS, RTC_REG_SECONDS, BIN_TO_BCD(currentSecond));
+    i2cWriteRegister(RTC_ADDRESS, RTC_REG_MINUTES, BIN_TO_BCD(currentMinute));
+    i2cWriteRegister(RTC_ADDRESS, RTC_REG_HOURS, BIN_TO_BCD(utcHour));
+    i2cWriteRegister(RTC_ADDRESS, RTC_REG_DAY, utcDay+1);  // MSF has days as 0-6 but RTC is 1-7
+    i2cWriteRegister(RTC_ADDRESS, RTC_REG_DATE, BIN_TO_BCD(utcDate));
+    i2cWriteRegister(RTC_ADDRESS, RTC_REG_MONTH, BIN_TO_BCD(utcMonth));
+    i2cWriteRegister(RTC_ADDRESS, RTC_REG_YEAR, BIN_TO_BCD(utcYear));
+}
 
 // Checks the parity of a set of MSF bits
 static bool checkParity( uint8_t start, uint8_t finish, uint8_t parity )
@@ -234,17 +293,15 @@ static uint8_t getDaysInMonth( uint8_t month, uint8_t year )
     return days;
 }
 
-// Displays the time
-static void displayTime(void)
+// Converts the time to UTC
+static void convertTimeUTC(void)
 {
     // We may need to adjust the time to take into account daylight savings
-    uint8_t displayDay = currentDay;
-    uint8_t displayDate = currentDate;
-    uint8_t displayMonth = currentMonth;
-    uint8_t displayYear = currentYear;
-    uint8_t displayHour = currentHour;
-    uint8_t displayMinute = currentMinute;
-    uint8_t displaySecond = currentSecond;
+    utcDay = currentDay;
+    utcDate = currentDate;
+    utcMonth = currentMonth;
+    utcYear = currentYear;
+    utcHour = currentHour;
 
     // If we are on daylight savings then we need to go back one hour to get UTC
     // This may also mean going back to the previous day
@@ -252,41 +309,45 @@ static void displayTime(void)
     {
         // If in the first hour of the clock day then must go back to the
         // previous day
-        if( displayHour == 0 )
+        if( utcHour == 0 )
         {
-            displayHour = 23;
+            utcHour = 23;
 
             // If the first of the month then go back to the previous month
-            if( displayDate == 1 )
+            if( utcDate == 1 )
             {
-                displayMonth--;
+                utcMonth--;
 
                 // The date will be the last day of the previous month
-                displayDate = getDaysInMonth(displayMonth, displayYear);
+                utcDate = getDaysInMonth(utcMonth, utcYear);
             }
             else
             {
-                displayDate--;
+                utcDate--;
             }
 
             // Also need to go to the previous day of the week
-            if( displayDay == SUNDAY )
+            if( utcDay == SUNDAY )
             {
-                displayDay = SATURDAY;
+                utcDay = SATURDAY;
             }
             else
             {
-                displayDay--;
+                utcDay--;
             }
         }
         else
         {
-            displayHour--;
+            utcHour--;
         }
     }
+}
 
+// Displays the time
+static void displayTime(void)
+{
 #ifdef DEBUG
-    sprintf( buf, "%s %u/%u/%u %02u:%02u:%02u UTC %s\r\n", convertDay(displayDay), displayDate, displayMonth, displayYear, displayHour, displayMinute, displaySecond, bGoodSignal ? "OK" : "Lost" );
+    sprintf( buf, "%s %u/%u/%u %02u:%02u:%02u UTC %s\r\n", convertDay(utcDay), utcDate, utcMonth, utcYear, utcHour, currentMinute, currentSecond, bGoodSignal ? "OK" : "Lost" );
     serialTXString( buf );
 #endif
 
@@ -295,10 +356,10 @@ static void displayTime(void)
     secondCount++;
     sprintf( buf, "%lu", secondCount );
 #else
-    sprintf( buf, "%s %02u/%02u/%02u   %c", convertDay(displayDay), displayDate, displayMonth, displayYear, bGoodSignal ? '*' : ' ' );
+    sprintf( buf, "%s %02u/%02u/%02u   %c", convertDay(utcDay), utcDate, utcMonth, utcYear, bGoodSignal ? '*' : ' ' );
 #endif
     displayText(0, buf, true);
-    sprintf( buf, "%02u:%02u:%02u UTC  %c%c", displayHour, displayMinute, displaySecond, bGoodSignal ? ' ' : bGoodMinute ?  'M' : 'm', bGoodSignal ? ' ' : bGoodSecond ? 'S' : 's');
+    sprintf( buf, "%02u:%02u:%02u UTC  %c%c", utcHour, currentMinute, currentSecond, bGoodSignal ? ' ' : bGoodMinute ?  'M' : 'm', bGoodSignal ? ' ' : bGoodSecond ? 'S' : 's');
     displayText(1, buf, true);
 }
 
@@ -403,6 +464,15 @@ static void processRXData(void)
             if( bGoodSignal )
             {
                 bDaylightSavings = bitB[58];
+            }
+
+            // Convert the received time to UTC if necessary
+            convertTimeUTC();
+
+            // If it's good data then write the time to the RTC chip
+            if( bGoodSignal )
+            {
+                writeRTCTime();
             }
         }
         else
@@ -736,6 +806,12 @@ int main(void)
 #endif
 
     displayInit();
+
+    i2cInit();
+
+    // Read the time from the RTC chip
+    initRTC();
+    readRTCTime();
 
 #ifdef DEBUG
     serialTXString("G4TGJ MSF Clock\r\n\r\n");

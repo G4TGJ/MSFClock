@@ -61,4 +61,26 @@ typedef uint8_t bool;
 #define LCD_WIDTH 16
 #define LCD_HEIGHT 2
 
+// RTC chip I2C address
+#define RTC_ADDRESS 0x68
+
+// Convert 8 bit quantities from 0 to 99 between
+// BCD and decimal
+#define BCD_TO_BIN(x) (((x)&0xF) + (((x)&0xF0)>>4)*10)
+#define BIN_TO_BCD(x) (((x)%10) + (((x)/10)<<4))
+
+// Real time clock chip registers
+#define RTC_REG_SECONDS 0x00
+#define RTC_REG_MINUTES 0x01
+#define RTC_REG_HOURS   0x02
+#define RTC_REG_DAY     0x03
+#define RTC_REG_DATE    0x04
+#define RTC_REG_MONTH   0x05
+#define RTC_REG_YEAR    0x06
+#define RTC_REG_CONTROL 0x0E
+#define RTC_REG_STATUS  0x0F
+
+// RTC control register bit
+#define RTC_CONTROL_INTCN 2
+
 #endif /* CONFIG_H_ */
