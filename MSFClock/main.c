@@ -319,7 +319,15 @@ static void convertTimeUTC(void)
             // If the first of the month then go back to the previous month
             if( utcDate == 1 )
             {
-                utcMonth--;
+                if( utcMonth == 1 )
+                {
+                    utcMonth = 12;
+                    utcYear--;
+                }
+                else
+                {
+                    utcMonth--;
+                }
 
                 // The date will be the last day of the previous month
                 utcDate = getDaysInMonth(utcMonth, utcYear);
@@ -369,6 +377,18 @@ static void displayTime(void)
 // Process the data received from MSF over the last minute
 static void processRXData(void)
 {
+    // We will read the data in but only set the values if all the
+    // parity checks are OK and the data is sensible. Needed because
+    // the checks are not very sophisticated and won't detect all
+    // errors.
+    uint8_t year = 0, month = 1, date = 1, day = 1, hour = 0, minute = 0, second = 0;
+
+    // For processing the DUT1 value
+    uint8_t posDutCount;
+    int8_t posDut1 = 0;
+    uint8_t negDutCount;
+    int8_t negDut1 = 0;
+
     // If the minute identifier is wrong then the data isn't valid
     if( checkMinuteIdentifier() )
     {
@@ -380,12 +400,8 @@ static void processRXData(void)
         // Check the data is sensible before setting the current value
         if( checkParity(YEAR_START, YEAR_START + YEAR_LEN - 1, YEAR_PARITY) )
         {
-            uint8_t year = convertBCD(YEAR_START, YEAR_LEN);
-            if( year <= 99 )
-            {
-                currentYear = year;
-            }
-            else
+            year = convertBCD(YEAR_START, YEAR_LEN);
+            if( year > 99 )
             {
                 bGoodSignal = false;
             }
@@ -397,22 +413,14 @@ static void processRXData(void)
 
         if( checkParity(MONTH_PARITY_START, MONTH_PARITY_END, MONTH_PARITY) )
         {
-            uint8_t month = convertBCD(MONTH_START, MONTH_LEN);
-            if( month >= JANUARY && month <= DECEMBER )
-            {
-                currentMonth = month;
-            }
-            else
+            month = convertBCD(MONTH_START, MONTH_LEN);
+            if( month < JANUARY || month > DECEMBER )
             {
                 bGoodSignal = false;
             }
 
-            uint8_t date = convertBCD(DATE_START, DATE_LEN);
-            if( date >= 1 && date <= getDaysInMonth(currentMonth, currentYear) )
-            {
-                currentDate = date;
-            }
-            else
+            date = convertBCD(DATE_START, DATE_LEN);
+            if( date < 1 || date > getDaysInMonth(currentMonth, currentYear) )
             {
                 bGoodSignal = false;
             }
@@ -424,12 +432,8 @@ static void processRXData(void)
 
         if( checkParity(DAY_START, DAY_START + DAY_LEN - 1, DAY_PARITY) )
         {
-            uint8_t day = convertBCD(DAY_START, DAY_LEN);
-            if( day <= LAST_DAY )
-            {
-                currentDay = day;
-            }
-            else
+            day = convertBCD(DAY_START, DAY_LEN);
+            if( day > LAST_DAY )
             {
                 bGoodSignal = false;
             }
@@ -441,49 +445,24 @@ static void processRXData(void)
 
         if( checkParity(TIME_PARITY_START, TIME_PARITY_END, TIME_PARITY) )
         {
-            uint8_t hour = convertBCD(HOUR_START, HOUR_LEN);
-            if( hour <= 23 )
-            {
-                currentHour = hour;
-            }
-            else
+            hour = convertBCD(HOUR_START, HOUR_LEN);
+            if( hour > 23 )
             {
                 bGoodSignal = false;
             }
 
-            uint8_t minute = convertBCD(MINUTE_START, MINUTE_LEN);
-            if( minute <= 59 )
-            {
-                currentMinute = minute;
-            }
-            else
+            minute = convertBCD(MINUTE_START, MINUTE_LEN);
+            if( minute > 59 )
             {
                 bGoodSignal = false;
-            }
-
-            // The daylight savings flag is not protected by parity so we will
-            // only read it if everything else has been read correctly to give
-            // us confidence it is correct
-            if( bGoodSignal )
-            {
-                bDaylightSavings = bitB[58];
-            }
-
-            // Convert the received time to UTC if necessary
-            convertTimeUTC();
-
-            // If it's good data then write the time to the RTC chip
-            if( bGoodSignal )
-            {
-                writeRTCTime();
             }
 
             // Process the DUT1 code
             dut1 = 0;
 
             // Start by counting the positive bits. Then check that if bit n is set there are n bits set.
-            uint8_t posDutCount = bitB[1] + bitB[2] + bitB[3] + bitB[4] + bitB[5] + bitB[6] + bitB[7] + bitB[8];
-            int8_t posDut1 = 0;
+            posDutCount = bitB[1] + bitB[2] + bitB[3] + bitB[4] + bitB[5] + bitB[6] + bitB[7] + bitB[8];
+            posDut1 = 0;
             if( bitB[8] )
             {
                 if( posDutCount == 8 )
@@ -574,8 +553,8 @@ static void processRXData(void)
             }
 
             // Now count the negative bits. Then check that if bit n is set there are n bits set.
-            uint8_t negDutCount = bitB[9] + bitB[10] + bitB[11] + bitB[12] + bitB[13] + bitB[14] + bitB[15] + bitB[16];
-            int8_t negDut1 = 0;
+            negDutCount = bitB[9] + bitB[10] + bitB[11] + bitB[12] + bitB[13] + bitB[14] + bitB[15] + bitB[16];
+            negDut1 = 0;
             if( bitB[16] )
             {
                 if( negDutCount == 8 )
@@ -665,22 +644,6 @@ static void processRXData(void)
                 }
             }
 
-            // Cannot have both positive and negative DUT1 signals
-            if( posDut1)
-            {
-                if( negDut1 )
-                {
-                    bGoodSignal = false;
-                }
-                else
-                {
-                    dut1 = posDut1;
-                }
-            }
-            else
-            {
-                dut1 = negDut1;
-            }
         }
         else
         {
@@ -690,6 +653,48 @@ static void processRXData(void)
     else
     {
         bGoodSignal = false;
+    }
+
+    // If everything received OK then can update the DUT
+    if( bGoodSignal )
+    {
+        // Cannot have both positive and negative DUT1 signals
+        if( posDut1)
+        {
+            if( negDut1 )
+            {
+                bGoodSignal = false;
+            }
+            else
+            {
+                dut1 = posDut1;
+            }
+        }
+        else
+        {
+            dut1 = negDut1;
+        }
+    }
+
+    // If everything received OK then can update the time
+    if( bGoodSignal )
+    {
+        currentYear = year;
+        currentMonth = month;
+        currentDate = date;
+        currentDay = day;
+        currentHour = hour;
+        currentMinute = minute;
+        currentSecond = second;
+
+        // The daylight savings bit is not protected in any way
+        bDaylightSavings = bitB[58];
+
+        // Convert the received time to UTC if necessary
+        convertTimeUTC();
+
+        // Write to the RTC chip
+        writeRTCTime();
     }
 
     // Start the next minute with all the bits zeroed
