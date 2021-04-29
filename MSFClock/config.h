@@ -37,6 +37,12 @@ typedef uint8_t bool;
 #define SERIAL_RX_BUF_LEN 32
 #define SERIAL_TX_BUF_LEN 256
 
+// Use the I2C version of the LCD driver
+#define LCD_I2C
+
+// Address of the LCD display
+#define LCD_I2C_ADDRESS 0x27
+
 // LCD Port definitions
 #define LCD_ENABLE_PORT PORTD
 #define LCD_ENABLE_DDR  DDRD

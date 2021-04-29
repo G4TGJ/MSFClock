@@ -8,7 +8,7 @@
 
 ..\..\TARL\lcd.c
 
-..\..\TARL\lcd_port.c
+..\..\TARL\lcd_if.c
 
 ..\..\TARL\millis.c
 
