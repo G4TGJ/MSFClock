@@ -18,6 +18,8 @@ typedef uint8_t bool;
 
 #define F_CPU 16000000UL
 
+//#define DEBUG
+
 #define LED_OUTPUT_PORT_REG   PORTB
 #define LED_OUTPUT_PIN_REG    PINB
 #define LED_OUTPUT_DDR_REG    DDRB

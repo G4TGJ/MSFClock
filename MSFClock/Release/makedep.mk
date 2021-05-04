@@ -12,6 +12,8 @@
 
 ..\..\TARL\millis.c
 
+..\..\TARL\serial.c
+
 io.c
 
 main.c

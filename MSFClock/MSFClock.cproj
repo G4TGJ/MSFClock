@@ -149,6 +149,14 @@
       <SubType>compile</SubType>
       <Link>millis.h</Link>
     </Compile>
+    <Compile Include="..\..\TARL\serial.c">
+      <SubType>compile</SubType>
+      <Link>serial.c</Link>
+    </Compile>
+    <Compile Include="..\..\TARL\serial.h">
+      <SubType>compile</SubType>
+      <Link>serial.h</Link>
+    </Compile>
     <Compile Include="config.h">
       <SubType>compile</SubType>
     </Compile>

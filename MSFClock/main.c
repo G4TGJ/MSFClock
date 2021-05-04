@@ -209,6 +209,44 @@ static void writeRTCTime(void)
     i2cWriteRegister(RTC_ADDRESS, RTC_REG_YEAR, BIN_TO_BCD(utcYear));
 }
 
+#ifdef DEBUG
+static void displayBits( uint8_t *bits )
+{
+    uint8_t i;
+    for( i = 0 ; i < NUM_BITS ; i++ )
+    {
+        switch(i)
+        {
+            case 17:
+            case 25:
+            case 30:
+            case 36:
+            case 39:
+            case 45:
+            case 52:
+                sprintf( buf, " %d: ", i );
+                serialTXString(buf);
+                break;
+
+            default:
+                break;
+        }
+        sprintf( buf, "%d", bits[i] );
+        serialTXString(buf);
+    }
+    serialTXString( "\r\n" );
+}
+
+static void badData( char *text )
+{
+    serialTXString(text);
+    serialTXString("A: ");
+    displayBits( bitA );
+    serialTXString("B: ");
+    displayBits( bitB );
+}
+#endif
+
 // Checks the parity of a set of MSF bits
 static bool checkParity( uint8_t start, uint8_t finish, uint8_t parity )
 {
@@ -245,14 +283,33 @@ static uint8_t convertBCD( uint8_t start, uint8_t len )
 // Checks that the minute identifier within the MSF data is correct
 static bool checkMinuteIdentifier()
 {
-    return  !bitA[52]
-         &&  bitA[53]
-         &&  bitA[54]
-         &&  bitA[55]
-         &&  bitA[56]
-         &&  bitA[57]
-         &&  bitA[58]
-         && !bitA[59];
+    bool bId =  !bitA[52]
+             &&  bitA[53]
+             &&  bitA[54]
+             &&  bitA[55]
+             &&  bitA[56]
+             &&  bitA[57]
+             &&  bitA[58]
+             && !bitA[59];
+
+#ifdef DEBUG
+    if( !bId )
+    {
+        sprintf(buf, "ID: %d%d%d%d%d%d%d%d\n\r", 
+            bitA[52],
+            bitA[53],
+            bitA[54],
+            bitA[55],
+            bitA[56],
+            bitA[57],
+            bitA[58],
+            bitA[59]
+        );
+        serialTXString(buf);
+    }
+#endif
+
+    return bId;
 }
 
 // Converts an MSF day number into text
@@ -359,7 +416,7 @@ static void displayTime(void)
 {
 #ifdef DEBUG
     sprintf( buf, "%s %u/%u/%u %02u:%02u:%02u UTC %s\r\n", convertDay(utcDay), utcDate, utcMonth, utcYear, utcHour, currentMinute, currentSecond, bGoodSignal ? "OK" : "Lost" );
-    serialTXString( buf );
+    //serialTXString( buf );
 #endif
 
 #if 0
@@ -404,11 +461,17 @@ static void processRXData(void)
             if( year > 99 )
             {
                 bGoodSignal = false;
+#ifdef DEBUG
+                badData("Bad year\r\n");
+#endif
             }
         }
         else
         {
             bGoodSignal = false;
+#ifdef DEBUG
+            badData("Bad year parity\r\n");
+#endif
         }
 
         if( checkParity(MONTH_PARITY_START, MONTH_PARITY_END, MONTH_PARITY) )
@@ -417,17 +480,26 @@ static void processRXData(void)
             if( month < JANUARY || month > DECEMBER )
             {
                 bGoodSignal = false;
+#ifdef DEBUG
+                badData("Bad month\r\n");
+#endif
             }
 
             date = convertBCD(DATE_START, DATE_LEN);
             if( date < 1 || date > getDaysInMonth(currentMonth, currentYear) )
             {
                 bGoodSignal = false;
+#ifdef DEBUG
+                badData("Bad date\r\n");
+#endif
             }
         }
         else
         {
             bGoodSignal = false;
+#ifdef DEBUG
+            badData("Bad date parity\r\n");
+#endif
         }
 
         if( checkParity(DAY_START, DAY_START + DAY_LEN - 1, DAY_PARITY) )
@@ -436,11 +508,17 @@ static void processRXData(void)
             if( day > LAST_DAY )
             {
                 bGoodSignal = false;
+#ifdef DEBUG
+                badData("Bad day\r\n");
+#endif
             }
         }
         else
         {
             bGoodSignal = false;
+#ifdef DEBUG
+            badData("Bad day parity\r\n");
+#endif
         }
 
         if( checkParity(TIME_PARITY_START, TIME_PARITY_END, TIME_PARITY) )
@@ -449,12 +527,18 @@ static void processRXData(void)
             if( hour > 23 )
             {
                 bGoodSignal = false;
+#ifdef DEBUG
+                badData("Bad hour\r\n");
+#endif
             }
 
             minute = convertBCD(MINUTE_START, MINUTE_LEN);
             if( minute > 59 )
             {
                 bGoodSignal = false;
+#ifdef DEBUG
+                badData("Bad minute\r\n");
+#endif
             }
 
             // Process the DUT1 code
@@ -472,6 +556,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut 8\r\n");
+#endif
                 }
             }
             else if( bitB[7] )
@@ -483,6 +570,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut 7\r\n");
+#endif
                 }
             }
             else if( bitB[6] )
@@ -494,6 +584,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut 6\r\n");
+#endif
                 }
             }
             else if( bitB[5] )
@@ -505,6 +598,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut 5\r\n");
+#endif
                 }
             }
             else if( bitB[4] )
@@ -516,6 +612,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut 4\r\n");
+#endif
                 }
             }
             else if( bitB[3] )
@@ -527,6 +626,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut 3\r\n");
+#endif
                 }
             }
             else if( bitB[2] )
@@ -538,6 +640,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut 2\r\n");
+#endif
                 }
             }
             else if( bitB[1] )
@@ -549,6 +654,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut 1\r\n");
+#endif
                 }
             }
 
@@ -564,6 +672,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut -8\r\n");
+#endif
                 }
             }
             else if( bitB[15] )
@@ -575,6 +686,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut -7\r\n");
+#endif
                 }
             }
             else if( bitB[14] )
@@ -586,6 +700,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut -6\r\n");
+#endif
                 }
             }
             else if( bitB[13] )
@@ -597,6 +714,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut -5\r\n");
+#endif
                 }
             }
             else if( bitB[12] )
@@ -608,6 +728,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut -4\r\n");
+#endif
                 }
             }
             else if( bitB[11] )
@@ -619,6 +742,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut -3\r\n");
+#endif
                 }
             }
             else if( bitB[10] )
@@ -630,6 +756,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut -2\r\n");
+#endif
                 }
             }
             else if( bitB[9] )
@@ -641,6 +770,9 @@ static void processRXData(void)
                 else
                 {
                     bGoodSignal = false;
+#ifdef DEBUG
+                    badData("Bad dut -1\r\n");
+#endif
                 }
             }
 
@@ -648,11 +780,17 @@ static void processRXData(void)
         else
         {
             bGoodSignal = false;
+#ifdef DEBUG
+            badData("Bad time parity\r\n");
+#endif
         }
     }
     else
     {
         bGoodSignal = false;
+#ifdef DEBUG
+        badData("Bad minute marker\r\n");
+#endif
     }
 
     // If everything received OK then can update the DUT
@@ -664,6 +802,9 @@ static void processRXData(void)
             if( negDut1 )
             {
                 bGoodSignal = false;
+#ifdef DEBUG
+                badData("Bad dut pos/neg\r\n");
+#endif
             }
             else
             {
@@ -710,12 +851,12 @@ static void newSecond( uint32_t currentTime )
 {
 #ifdef DEBUG
     sprintf( buf, "\r\nSecond %u MSF bit %u ", currentSecond, currentBit );
-    serialTXString(buf);
+    //serialTXString(buf);
 #endif
 
 #ifdef DEBUG
     sprintf( buf, "\r\ncurrentTime %lu  lastSecond %lu ", currentTime, lastSecond );
-    serialTXString(buf);
+    //serialTXString(buf);
 #endif
 
     // Keep track of the AVR clock time for this second
@@ -902,7 +1043,7 @@ static void processRX( bool signal, uint32_t currentTime )
                 bitA[currentBit] = 1;
 #ifdef DEBUG
                 sprintf(buf, "A(%u)=1 ", currentBit);
-                serialTXString(buf);
+                //serialTXString(buf);
 #endif
                 break;
 
@@ -912,7 +1053,7 @@ static void processRX( bool signal, uint32_t currentTime )
                 bitA[currentBit] = 0;
 #ifdef DEBUG
                 sprintf(buf, "A(%u)=0 ", currentBit);
-                serialTXString(buf);
+                //serialTXString(buf);
 #endif
                 break;
 
@@ -921,7 +1062,7 @@ static void processRX( bool signal, uint32_t currentTime )
                 bitB[currentBit] = 1;
 #ifdef DEBUG
                 sprintf(buf, "B(%u)=1 ", currentBit);
-                serialTXString(buf);
+                //serialTXString(buf);
 #endif
                 break;
 
@@ -930,7 +1071,7 @@ static void processRX( bool signal, uint32_t currentTime )
                 bitB[currentBit] = 0;
 #ifdef DEBUG
                 sprintf(buf, "B(%u)=0 ", currentBit);
-                serialTXString(buf);
+                //serialTXString(buf);
 #endif
                 break;
 
