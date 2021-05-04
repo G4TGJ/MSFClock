@@ -93,7 +93,7 @@ DEBUG_OUTPUT_PIN_REG = (1<<DEBUG_OUTPUT_PIN);
             {
                 // To help eliminate false signals set the threshold
                 // to be much higher than previously
-                threshold = prevThreshold * 8;
+                threshold = prevThreshold * 4;
                 LED_OUTPUT_PORT_REG &= ~(1<<LED_OUTPUT_PIN);
                 bSignal = false;
             }
