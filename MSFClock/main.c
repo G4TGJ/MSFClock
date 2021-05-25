@@ -873,6 +873,7 @@ static void newSecond( uint32_t currentTime )
             currentMinute = 0;
             if( currentHour >= 23 )
             {
+                currentHour = 0;
                 if( currentDate >= getDaysInMonth(currentMonth, currentYear) )
                 {
                     // Last day of the month
@@ -898,6 +899,9 @@ static void newSecond( uint32_t currentTime )
             {
                 currentHour++;
             }
+
+            // Moved to a new hour so must ensure the UTC time is up to date
+            convertTimeUTC();
         }
         else
         {
