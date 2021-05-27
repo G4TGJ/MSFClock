@@ -173,20 +173,34 @@ static void initRTC(void)
 // Read the time from the RTC chip
 static void readRTCTime(void)
 {
-    i2cReadRegister(RTC_ADDRESS, RTC_REG_SECONDS, &currentSecond);
-    currentSecond = BCD_TO_BIN( currentSecond );
-    i2cReadRegister(RTC_ADDRESS, RTC_REG_MINUTES, &currentMinute);
-    currentMinute = BCD_TO_BIN( currentMinute );
-    i2cReadRegister(RTC_ADDRESS, RTC_REG_HOURS, &currentHour);
-    currentHour = BCD_TO_BIN( currentHour );
-    i2cReadRegister(RTC_ADDRESS, RTC_REG_DAY, &currentDay);
-    currentDay--; // MSF has days as 0-6 but RTC is 1-7
-    i2cReadRegister(RTC_ADDRESS, RTC_REG_DATE, &currentDate);
-    currentDate = BCD_TO_BIN( currentDate );
-    i2cReadRegister(RTC_ADDRESS, RTC_REG_MONTH, &currentMonth);
-    currentMonth = BCD_TO_BIN( currentMonth );
-    i2cReadRegister(RTC_ADDRESS, RTC_REG_YEAR, &currentYear);
-    currentYear = BCD_TO_BIN( currentYear );
+    if( i2cReadRegister(RTC_ADDRESS, RTC_REG_SECONDS, &currentSecond) == 0 )
+    {
+        currentSecond = BCD_TO_BIN( currentSecond );
+    }
+    if( i2cReadRegister(RTC_ADDRESS, RTC_REG_MINUTES, &currentMinute) == 0 )
+    {
+        currentMinute = BCD_TO_BIN( currentMinute );
+    }
+    if( i2cReadRegister(RTC_ADDRESS, RTC_REG_HOURS, &currentHour) == 0 )
+    {
+        currentHour = BCD_TO_BIN( currentHour );
+    }
+    if( i2cReadRegister(RTC_ADDRESS, RTC_REG_DAY, &currentDay) == 0 )
+    {
+        currentDay--; // MSF has days as 0-6 but RTC is 1-7
+    }
+    if( i2cReadRegister(RTC_ADDRESS, RTC_REG_DATE, &currentDate) == 0 )
+    {
+        currentDate = BCD_TO_BIN( currentDate );
+    }
+    if( i2cReadRegister(RTC_ADDRESS, RTC_REG_MONTH, &currentMonth) == 0 )
+    {
+        currentMonth = BCD_TO_BIN( currentMonth );
+    }
+    if( i2cReadRegister(RTC_ADDRESS, RTC_REG_YEAR, &currentYear) == 0 )
+    {
+        currentYear = BCD_TO_BIN( currentYear );
+    }
 
     // Nowhere to store the daylight saving setting in the RTC so
     // always store the time in UTC.
@@ -1143,6 +1157,10 @@ void autonomousClock( uint32_t currentTime )
     if( (currentTime - lastMinute) >= 61000 )
     {
         bGoodMinute = false;
+
+        // Read the time from the RTC chip as it should be
+        // more accurate than using the AVR timer
+        readRTCTime();
     }
 }
 
