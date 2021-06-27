@@ -25,7 +25,7 @@
 
 // To get the correct sample rate we only process every so
 // many samples
-#define SAMPLE_COUNT 14
+#define SAMPLE_COUNT 13
 
 // The square of the magnitude of the clock signal as
 // calculated by the goertzel algorithm
