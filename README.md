@@ -1,6 +1,10 @@
 # MSFClock
 Decode and display UTC from MSF at Anthorn, Cumbria.
 
+## Board layout
+
+The active antenna and receiver boards are built with stripboard - see the layout directory.
+
 ## Programming flash
 
 The Arduino Nano is programmed via its mini USB port. The usual application for programming is [avrdude](https://www.nongnu.org/avrdude/). 
