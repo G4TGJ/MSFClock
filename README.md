@@ -1,4 +1,5 @@
 # MSFClock
+MSF Shack Clock as published in RadCom January 2022.
 Decode and display UTC from MSF at Anthorn, Cumbria.
 
 ## Board layout
